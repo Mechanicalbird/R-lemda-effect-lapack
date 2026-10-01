@@ -1,0 +1,98 @@
+! ========================================
+! ====== Implement Microplane Model ======
+! ====== Metric Units (MPa) version ======
+! ========================================
+! Written by:
+!   Brock D. Hedegaard, PhD, PE
+!   Associate Professor
+!   Department of Civil Engineering
+!   University of Minnesota Duluth
+!
+! Revision Date: August 18, 2021
+!
+! Licensing:
+!   This work by Brock D. Hedegaard, PhD, PE, is licensed under the 
+!   Creative Commons Attribution 4.0 International License (CC BY 4.0).
+!   To view a copy of this license, visit
+!       https://creativecommons.org/licenses/by/4.0/
+!
+! Desciption:
+!   This implements the coupled damage-plasticity Microplane model with implicit gradient regularization
+!   Refer to Help Section 4.9.2.2 in the Mechanical APDL 2021 R2 - Material Reference
+!
+! Instructions:
+!   To use, create a Material Assignment for the concrete material, then create a "Commands" object
+!   within that Material Assignment. Enter the following single line of text there...
+! 		conc = matid
+!   Next create another "Commands" object under Static Structural. Copy the entirety of this
+!   text file to there.  
+!
+!   The values in Steps 1 through 4 below are intended to be changed to match your concrete.
+!   Calibration to experimental data is encouraged, but typical values are suggested below.
+
+! === Start Code ===
+
+! This means these commands will be carried out during pre-processing
+/PREP7
+
+! Step 1: Define elastic properties of material
+E = 30000           ! Young's Modulus, MPa
+nu = 0.2            ! Poisson's Ratio, unitless
+
+! Step 2: Define microplane model properties 
+!  - Approximations and typical ranges per intuition... your concrete may be different!
+fc = 41             ! Uniaxial compressive strength, MPa
+fb = 48             ! Biaxial compressive strength, MPa         (estimate as 1.15*fc if unknown)
+ft = 4              ! Tensile strength, MPa                     (estimate as 0.1*fc if unknown)
+Rt = 1              ! Tension cap hardening constant, unitless  (typically = 1)
+D = 20e4            ! Compressive hardening constant, MPa^2     (typically between 1e4 and 50e4)
+sigma_cv = -32      ! Int. of comp. cap and DP yield, MPa       (always negative, approximately -2/3*fb or lower)
+Rc = 2              ! Compression cap ratio constant, unitless  (typically = 2)
+gamma_t = 0         ! Tensile damage threshhold, unitless       (typically = 0)
+gamma_c = 5e-5      ! Compressive damage threshhold, unitless   (typically between 1e-5 to 10e-5)
+beta_t = 6000       ! Tension damage evolution, unitless        (typically 1.5*beta_c)
+beta_c = 4000       ! Compression damage evolution, unitless    (typically between 1000 and 10000)
+
+! Step 3: Define nonlocal parameters c and m
+c = 650             ! Nonlocal range parameter, mm^2            (element size should be < 0.5*sqrt(c))
+m = 2               ! Over-nonlocal parameter, unitless         (typically 1 to 3)
+
+! Step 4: Select element type
+element = 216       ! Element type number (Linear = 215, Quadratic = 216)
+
+
+! ===================================================================
+! You should not need to change code below this point, unless
+! you are debugging, modifying, or otherwise know what you are doing
+! ===================================================================
+
+! Assign Elastic Properties 
+MP,EX,conc,E       ! Assign Young's Modulus
+MP,NUXY,conc,nu    ! Assign Poisson's Ratio
+
+! Assign microplane properties for coupled damaged-plasticity (MPLANE-DPC)
+TB,MPLANE,conc,,,DPC
+TBDATA,1,fc,fb,ft,Rt,D,sigma_cv
+TBDATA,7,Rc,gamma_t,gamma_c,beta_t,beta_c
+
+! Assign nonlocal properties to microplane model (MPLANE-NLOCAL)
+TB,MPLANE,conc,,,NLOCAL
+TBDATA,1,c,m
+
+! Define coupled elements (this code assumes ITYPE = matid, which it should be in almost all cases)
+itype = conc
+
+et,itype,element
+keyopt,itype,18,2     ! Element needs 2 nonlocal parameters for keyopt(18) 
+
+! Switch element type of those that are assigned Concrete
+esel,s,mat,,conc
+emodif,all,type,itype
+
+! To check that everything worked out, print the element list
+allsel
+etlist,all
+
+! Now proceed to the solution and output all results
+/SOLU
+outres,all,all
